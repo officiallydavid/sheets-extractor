@@ -108,8 +108,8 @@ export function extractQualifyingRows(rows) {
     dataRowCount++
     if (dataRowCount > 100) break
 
-    // Normalise: strip whitespace and newlines, uppercase for comparison
-    const rawCal = (row[calInviteIdx] == null ? '' : row[calInviteIdx]).toString().replace(/\s+/g, ' ').trim().toUpperCase()
+    // Normalise: remove ALL whitespace so "Y - A" (spaces around dash) becomes "Y-A"
+    const rawCal = (row[calInviteIdx] == null ? '' : row[calInviteIdx]).toString().replace(/\s+/g, '').toUpperCase()
     if (rawCal === 'Y' || rawCal === 'Y-A') {
       qualifying.push({
         firstName: (row[firstNameIdx] == null ? '' : row[firstNameIdx]).toString().trim(),
