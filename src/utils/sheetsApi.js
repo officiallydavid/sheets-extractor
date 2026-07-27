@@ -41,9 +41,10 @@ export async function fetchSheetData(spreadsheetId, accessToken) {
   const spreadsheetTitle = info.properties?.title || 'Untitled Sheet'
   const firstSheetTitle = info.sheets?.[0]?.properties?.title || 'Sheet1'
 
-  // Encode sheet name for the range — wrap in single quotes if it contains spaces
+  // Fetch a generous range so empty rows within the sheet don't cause us to
+  // fall short of 100 real data rows. The extractor enforces the 100-row cap.
   const sheetLabel = firstSheetTitle.includes(' ') ? `'${firstSheetTitle}'` : firstSheetTitle
-  const range = encodeURIComponent(`${sheetLabel}!1:101`)
+  const range = encodeURIComponent(`${sheetLabel}!1:300`)
 
   const dataRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
@@ -91,18 +92,31 @@ export function extractQualifyingRows(rows) {
     )
   }
 
-  const dataRows = rows.slice(1, 101) // top 100 data rows
+  // Walk rows after the header, counting only non-empty rows toward the 100-row cap.
+  // The Sheets API omits completely blank rows from the values array, so a simple
+  // slice(1, 101) would silently under-count whenever gaps exist in the sheet.
   const qualifying = []
+  let dataRowCount = 0
 
-  for (const row of dataRows) {
-    const calVal = (row[calInviteIdx] || '').toString().trim().toUpperCase()
-    if (calVal === 'Y' || calVal === 'Y-A') {
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+
+    // A row is "empty" if it has no cells or every cell is blank
+    const isEmpty = !row || row.length === 0 || row.every(c => (c == null || c.toString().trim() === ''))
+    if (isEmpty) continue
+
+    dataRowCount++
+    if (dataRowCount > 100) break
+
+    // Normalise: strip whitespace and newlines, uppercase for comparison
+    const rawCal = (row[calInviteIdx] == null ? '' : row[calInviteIdx]).toString().replace(/\s+/g, ' ').trim().toUpperCase()
+    if (rawCal === 'Y' || rawCal === 'Y-A') {
       qualifying.push({
-        firstName: (row[firstNameIdx] || '').toString().trim(),
-        lastName: (row[lastNameIdx] || '').toString().trim(),
-        company: (row[companyIdx] || '').toString().trim(),
-        title: (row[titleIdx] || '').toString().trim(),
-        calInvite: calVal,
+        firstName: (row[firstNameIdx] == null ? '' : row[firstNameIdx]).toString().trim(),
+        lastName:  (row[lastNameIdx]  == null ? '' : row[lastNameIdx]).toString().trim(),
+        company:   (row[companyIdx]   == null ? '' : row[companyIdx]).toString().trim(),
+        title:     (row[titleIdx]     == null ? '' : row[titleIdx]).toString().trim(),
+        calInvite: rawCal,
       })
     }
   }
